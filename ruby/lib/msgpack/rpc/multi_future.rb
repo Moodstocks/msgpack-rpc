@@ -161,7 +161,7 @@ class MultiFuture
 	def with_backtrace
 		begin
 			yield
-		rescue
+		rescue => e
 			btrace = e.backtrace
 			btrace[0] = "#{btrace[0]}: #{e.message} (#{e.class})"
 			$stderr.puts btrace.join("\n\tfrom: ")

@@ -158,6 +158,17 @@ class MultiFuture
 
 	private
 
+	def with_backtrace
+		begin
+			yield
+		rescue
+			btrace = e.backtrace
+			btrace[0] = "#{btrace[0]}: #{e.message} (#{e.class})"
+			$stderr.puts btrace.join("\n\tfrom: ")
+			nil
+		end
+	end
+
 	def callback(future)
 		if @not_joined.delete(future)
 			@joined << future
@@ -165,21 +176,21 @@ class MultiFuture
 			if future.error == nil
 				@success << future
 				if @on_success
-					@on_success.call(future) rescue nil
+					with_backtrace{ @on_success.call(future) }
 				end
 			else
 				@error << future
 				if @on_error
-					@on_error.call(future) rescue nil
+					with_backtrace{ @on_error.call(future) }
 				end
 			end
 
 			if callback = @on_num[@joined.size]
-				callback.call(@joined) rescue nil
+				with_backtrace{ callback.call(@joined) }
 			end
 
 			if @on_all && @not_joined.empty?
-				@on_all.call(@all) rescue nil
+				with_backtrace{ @on_all.call(@all) }
 			end
 		end
 	end

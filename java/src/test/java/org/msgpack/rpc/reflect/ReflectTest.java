@@ -17,6 +17,7 @@
 //
 package org.msgpack.rpc.reflect;
 
+import org.msgpack.MessagePack;
 import org.msgpack.rpc.*;
 import org.msgpack.rpc.dispatcher.*;
 import org.msgpack.rpc.loop.*;
@@ -27,6 +28,9 @@ import java.util.*;
 import junit.framework.*;
 
 public abstract class ReflectTest extends TestCase {
+
+    static MessagePack messagePack = new MessagePack();
+
 	static String stringify1(Iterable<String> a) {
 		StringBuilder sb = new StringBuilder();
 		for(String s : a) {
@@ -83,27 +87,27 @@ public abstract class ReflectTest extends TestCase {
 
 	public static class AsyncHandler {
         public void m01(Callback<String> callback) {
-            callback.run("m01");
+            callback.sendResult("m01");
         }
 
         public void m02(Callback<String> callback, String a1) {
-            callback.run("m02"+a1);
+            callback.sendResult("m02"+a1);
         }
 
         public void m03(Callback<String> callback, int a1) {
-            callback.run("m03"+a1);
+            callback.sendResult("m03"+a1);
         }
 
         public void m04(Callback<String> callback, List<String> a1) {
-            callback.run("m04"+stringify1(a1));
+            callback.sendResult("m04"+stringify1(a1));
         }
 
         public void m05(Callback<String> callback, List<List<String>> a1) {
-            callback.run("m05"+stringify2(a1));
+            callback.sendResult("m05"+stringify2(a1));
         }
 
         public void m06(Callback<String> callback, String a1, int a2) {
-            callback.run("m06"+a1+a2);
+            callback.sendResult("m06"+a1+a2);
         }
     }
 
@@ -161,8 +165,8 @@ public abstract class ReflectTest extends TestCase {
 
 	static class ReflectionMethodDispatcher extends MethodDispatcher {
 	    public ReflectionMethodDispatcher(Object target, Method[] methods) {
-	        super(target, methods);
-	        InvokerBuilder builder = ReflectionInvokerBuilder.getInstance();
+	        super(new Reflect(ReflectTest.messagePack),target, methods);
+	        InvokerBuilder builder = new ReflectionInvokerBuilder(ReflectTest.messagePack);//ReflectionInvokerBuilder.getInstance();
             for(Method method : methods) {
                 methodMap.put(method.getName(), builder.buildInvoker(method));
             }
@@ -171,8 +175,8 @@ public abstract class ReflectTest extends TestCase {
 
 	static class JavassistMethodDispatcher extends MethodDispatcher {
         public JavassistMethodDispatcher(Object target, Method[] methods) {
-            super(target, methods);
-            InvokerBuilder builder = JavassistInvokerBuilder.getInstance();
+            super(new Reflect(ReflectTest.messagePack),target, methods);
+            InvokerBuilder builder = new JavassistInvokerBuilder(ReflectTest.messagePack);
             for(Method method : methods) {
                 methodMap.put(method.getName(), builder.buildInvoker(method));
             }

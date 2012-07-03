@@ -19,82 +19,104 @@ package org.msgpack.rpc;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.msgpack.MessagePackObject;
+import org.msgpack.type.Value;
+import org.msgpack.type.ValueFactory;
 
 class FutureImpl {
-	private Session session;
-	private Runnable callback = null;
+    private Session session;
+    private Runnable callback = null;
 
-	private Object lock = new Object();
-	private int timeout;
-	private volatile boolean done = false;
+    private Object lock = new Object();
+    private int timeout;
+    private volatile boolean done = false;
 
-	private MessagePackObject result;
-	private MessagePackObject error;
+    private Value result;
+    private Value error;
 
-	FutureImpl(Session session) {
-		this.session = session;
-		this.timeout = session.getRequestTimeout();
-	}
+    FutureImpl(Session session) {
+        this.session = session;
+        this.timeout = session.getRequestTimeout();
+    }
 
-	void attachCallback(Runnable callback) {
-		synchronized(lock) {
-			this.callback = callback;
-		}
-		if(done) {
-			session.getEventLoop().getWorkerExecutor().submit(callback);
-		}
-	}
+    void attachCallback(Runnable callback) {
+        boolean was_already_done;
+        synchronized (lock) {
+            was_already_done = done;
+            if (!done) {
+                this.callback = callback;
+            }
+        }
+        if (was_already_done) {
+            session.getEventLoop().getWorkerExecutor().submit(callback);
+        }
+    }
 
-	void join() throws InterruptedException {
-		synchronized(lock) {
-			while(done == false) {
-				lock.wait();
-			}
-		}
-	}
+    void join() throws InterruptedException {
+        synchronized (lock) {
+            while (done == false) {
+                lock.wait();
+            }
+        }
+    }
 
-	void join(long timeout, TimeUnit unit) throws InterruptedException, TimeoutException {
-		synchronized(lock) {
-			while(done == false) {
-				lock.wait(unit.toMillis(timeout));
-			}
-		}
-	}
+    void join(long timeout, TimeUnit unit) throws InterruptedException, TimeoutException {
+        long end_time = System.currentTimeMillis() + unit.toMillis(timeout);
+        boolean run_callback = false;
+        synchronized (lock) {
+            while (done == false) {
+                long timeout_remaining = end_time - System.currentTimeMillis();
+                if (timeout_remaining <= 0) break;
+                lock.wait(timeout_remaining);
+            }
+            if (!done) {
+                this.error = ValueFactory.createRawValue("timedout");
+                done = true;
+                lock.notifyAll();
+                run_callback = true;
+            }
+        }
+        if (run_callback && callback != null) {
+            // FIXME #SF submit?
+            // session.getEventLoop().getWorkerExecutor().submit(callback);
+            callback.run();
+        }
+    }
 
-	public boolean isDone() {
-		return done;
-	}
+    public boolean isDone() {
+        return done;
+    }
 
-	public MessagePackObject getResult() {
-		return result;
-	}
+    public Value getResult() {
+        return result;
+    }
 
-	public MessagePackObject getError() {
-		return error;
-	}
+    public Value getError() {
+        return error;
+    }
 
-	public void setResult(MessagePackObject result, MessagePackObject error) {
-		synchronized(lock) {
-			this.result = result;
-			this.error = error;
-			this.done = true;
-			lock.notifyAll();
-		}
-		if(callback != null) {
-			// FIXME submit?
-			//session.getEventLoop().getWorkerExecutor().submit(callback);
-			callback.run();
-		}
-	}
+    public void setResult(Value result, Value error) {
+        synchronized (lock) {
+            if (done) {
+                return;
+            }
+            this.result = result;
+            this.error = error;
+            this.done = true;
+            lock.notifyAll();
+        }
+        if (callback != null) {
+            // FIXME #SF submit?
+            // session.getEventLoop().getWorkerExecutor().submit(callback);
+            callback.run();
+        }
+    }
 
-	boolean stepTimeout() {
-		if(timeout <= 0) {
-			return true;
-		} else {
-			timeout--;
-			return false;
-		}
-	}
+    boolean stepTimeout() {
+        if (timeout <= 0) {
+            return true;
+        } else {
+            timeout--;
+            return false;
+        }
+    }
 }
-

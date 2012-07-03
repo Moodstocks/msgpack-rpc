@@ -20,8 +20,12 @@ package org.msgpack.rpc;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
-import org.msgpack.MessagePackObject;
-import org.msgpack.rpc.address.Address;
+
+import org.msgpack.rpc.builder.DefaultDispatcherBuilder;
+import org.msgpack.rpc.builder.DispatcherBuilder;
+import org.msgpack.rpc.reflect.Reflect;
+import org.msgpack.type.NilValue;
+import org.msgpack.type.Value;
 import org.msgpack.rpc.address.IPAddress;
 import org.msgpack.rpc.dispatcher.Dispatcher;
 import org.msgpack.rpc.dispatcher.MethodDispatcher;
@@ -32,79 +36,97 @@ import org.msgpack.rpc.transport.ServerTransport;
 import org.msgpack.rpc.transport.MessageSendable;
 import org.msgpack.rpc.loop.EventLoop;
 import org.msgpack.rpc.error.RPCError;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Server extends SessionPool {
-	private Dispatcher dp;
-	private ServerTransport stran;
 
-	public Server() {
-		super();
-	}
+    private final static Logger logger = LoggerFactory.getLogger(Server.class);
 
-	public Server(ClientConfig config) {
-		super(config);
-	}
+    private Dispatcher dp;
+    private ServerTransport stran;
+    private DispatcherBuilder dispatcherBuilder = new DefaultDispatcherBuilder();
 
-	public Server(EventLoop loop) {
-		super(loop);
-	}
+    public Server() {
+        super();
+    }
 
-	public Server(ClientConfig config, EventLoop loop) {
-		super(config, loop);
-	}
+    public Server(ClientConfig config) {
+        super(config);
+    }
 
-	public void serve(Dispatcher dp) {
-		this.dp = dp;
-	}
+    public Server(EventLoop loop) {
+        super(loop);
+    }
 
-	public void serve(Object handler) {
-		this.dp = new MethodDispatcher(handler);
-	}
+    public Server(ClientConfig config, EventLoop loop) {
+        super(config, loop);
+    }
 
-	public void listen(String host, int port) throws UnknownHostException, IOException {
-		listen(new TcpServerConfig(new IPAddress(host,port)));
-	}
+    public DispatcherBuilder getDispatcherBuilder() {
+        return dispatcherBuilder;
+    }
 
-	public void listen(InetSocketAddress address) throws IOException {
-		listen(new TcpServerConfig(new IPAddress(address)));
-	}
+    public void setDispatcherBuilder(DispatcherBuilder dispatcherBuilder) {
+        this.dispatcherBuilder = dispatcherBuilder;
+    }
 
-	public void listen(int port) throws IOException {
-		listen(new TcpServerConfig(new IPAddress(port)));
-	}
+    public void serve(Dispatcher dp) {
+        this.dp = dp;
+    }
 
-	public void listen(ServerConfig config) throws IOException {
-		stran = getEventLoop().listenTransport(config, this);
-	}
+    public void serve(Object handler) {
+        this.dp = dispatcherBuilder.build(handler,this.getEventLoop().getMessagePack());
+    }
 
-	public void close() {
-		if(stran != null) {
-			stran.close();
-		}
-		super.close();
-	}
+    public void listen(String host, int port) throws UnknownHostException, IOException {
+        listen(new TcpServerConfig(new IPAddress(host, port)));
+    }
 
-	public void onRequest(MessageSendable channel,
-			int msgid, String method, MessagePackObject args) {
-		Request request = new Request(channel, msgid, method, args);
-		try {
-			dp.dispatch(request);
-		} catch(RPCError e) {
-			// FIXME
-			request.sendError(e.getCode(), e);
-		} catch(Exception e) {
-			// FIXME request.sendError("RemoteError", e.getMessage());
-			request.sendError(e.getMessage());
-		}
-	}
+    public void listen(InetSocketAddress address) throws IOException {
+        listen(new TcpServerConfig(new IPAddress(address)));
+    }
 
-	public void onNotify(String method, MessagePackObject args) {
-		Request request = new Request(method, args);
-		try {
-			dp.dispatch(request);
-		} catch(Exception e) {
-			// FIXME ignore?
-		}
-	}
+    public void listen(int port) throws IOException {
+        listen(new TcpServerConfig(new IPAddress(port)));
+    }
+
+    public void listen(ServerConfig config) throws IOException {
+        stran = getEventLoop().listenTransport(config, this);
+    }
+
+    public void close() {
+        if (stran != null) {
+            stran.close();
+        }
+        super.close();
+    }
+
+    public void onRequest(MessageSendable channel, int msgid, String method, Value args) {
+        Request request = new Request(channel, msgid, method, args);
+        try {
+            dp.dispatch(request);
+        } catch (RPCError e) {
+            // FIXME
+            request.sendError(e.getCode(), e);
+        } catch (Exception e) {
+            logger.error("Unexpected error occured while calling " + method, e);
+            // FIXME request.sendError("RemoteError", e.getMessage());
+            if(e.getMessage() == null)
+            {
+                request.sendError("");
+            }else{
+                request.sendError(e.getMessage());
+            }
+        }
+    }
+
+    public void onNotify(String method, Value args) {
+        Request request = new Request(method, args);
+        try {
+            dp.dispatch(request);
+        } catch (Exception e) {
+            // FIXME ignore?
+        }
+    }
 }
-

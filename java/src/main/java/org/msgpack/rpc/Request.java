@@ -17,70 +17,60 @@
 //
 package org.msgpack.rpc;
 
-import org.msgpack.MessagePackObject;
+import org.msgpack.type.Value;
 import org.msgpack.rpc.message.ResponseMessage;
 import org.msgpack.rpc.transport.MessageSendable;
 
-public class Request implements Callback<Object>{
-	private MessageSendable channel;  // synchronized?
-	private int msgid;
-	private String method;
-	private MessagePackObject args;
+public class Request implements Callback<Object> {
+    private MessageSendable channel; // TODO #SF synchronized?
+    private int msgid;
+    private String method;
+    private Value args;
 
-	public Request(MessageSendable channel,
-			int msgid, String method, MessagePackObject args) {
-		this.channel = channel;
-		this.msgid = msgid;
-		this.method = method;
-		this.args = args;
-	}
-
-	public Request(String method, MessagePackObject args) {
-		this.channel = null;
-		this.msgid = 0;
-		this.method = method;
-		this.args = args;
-	}
-
-	public String getMethodName() {
-		return method;
-	}
-
-	public MessagePackObject getArguments() {
-		return args;
-	}
-
-	public int getMessageID() {
-		return msgid;
-	}
-
-	public void sendResult(Object result) {
-		sendResponse(result, null);
-	}
-
-	public void sendError(Object error) {
-		sendResponse(null, error);
-	}
-
-	public void sendError(Object error, Object data) {
-		sendResponse(data, error);
-	}
-
-	public synchronized void sendResponse(Object result, Object error) {
-		if(channel == null) {
-			return;
-		}
-		ResponseMessage msg = new ResponseMessage(msgid, error, result);
-		channel.sendMessage(msg);
-		channel = null;
-	}
-
-    public void onError(Object result, Object error) {
-        sendResponse(result, error);
+    public Request(MessageSendable channel, int msgid, String method, Value args) {
+        this.channel = channel;
+        this.msgid = msgid;
+        this.method = method;
+        this.args = args;
     }
 
-    public void run(Object result) {
-        sendResult(result);
+    public Request(String method, Value args) {
+        this.channel = null;
+        this.msgid = 0;
+        this.method = method;
+        this.args = args;
+    }
+
+    public String getMethodName() {
+        return method;
+    }
+
+    public Value getArguments() {
+        return args;
+    }
+
+    public int getMessageID() {
+        return msgid;
+    }
+
+    public void sendResult(Object result) {
+        sendResponse(result, null);
+    }
+
+    public void sendError(Object error) {
+        sendResponse(null, error);
+    }
+
+    public void sendError(Object error, Object data) {
+        sendResponse(data, error);
+    }
+
+    public synchronized void sendResponse(Object result, Object error) {
+        if (channel == null) {
+            return;
+        }
+        ResponseMessage msg = new ResponseMessage(msgid, error, result);
+        channel.sendMessage(msg);
+        channel = null;
     }
 }
-

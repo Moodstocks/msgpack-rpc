@@ -17,46 +17,51 @@
 //
 package org.msgpack.rpc.loop.netty;
 
+import java.io.ByteArrayInputStream;
+import java.io.EOFException;
 import java.nio.ByteBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.handler.codec.frame.FrameDecoder;
-import org.msgpack.Unpacker;
-import org.msgpack.MessagePackObject;
+import org.msgpack.MessagePack;
+import org.msgpack.type.Value;
+import org.msgpack.unpacker.Unpacker;
 
 public class MessagePackStreamDecoder extends FrameDecoder {
-	protected Unpacker pac = new Unpacker();
+    protected MessagePack msgpack;
 
-	public MessagePackStreamDecoder() {
-		super();
-	}
+    public MessagePackStreamDecoder(MessagePack msgpack) {
+        super();
+        this.msgpack = msgpack;
+    }
 
-	@Override
-	protected Object decode(
-			ChannelHandlerContext ctx, Channel channel,
-			ChannelBuffer source) throws Exception {
-		ByteBuffer buffer = source.toByteBuffer();
-		if(!buffer.hasRemaining()) {
-			return null;
-		}
+    @Override
+    protected Object decode(ChannelHandlerContext ctx, Channel channel,
+            ChannelBuffer source) throws Exception {
+        // TODO #MN will modify the body with MessagePackBufferUnpacker.
+        ByteBuffer buffer = source.toByteBuffer();
+        if (!buffer.hasRemaining()) {
+            return null;
+        }
+        source.markReaderIndex();
 
-		byte[] bytes = buffer.array();  // FIXME buffer must has array
-		int offset = buffer.arrayOffset() + buffer.position();
-		int length = buffer.arrayOffset() + buffer.limit();
-
-		int noffset = pac.execute(bytes, offset, length);
-		if(noffset > offset) {
-			source.skipBytes(noffset - offset);
-		}
-
-		if(pac.isFinished()) {
-			MessagePackObject msg = pac.getData();
-			pac.reset();
-			return msg;
-		} else {
-			return null;
-		}
-	}
+        byte[] bytes = buffer.array(); // FIXME buffer must has array
+        int offset = buffer.arrayOffset() + buffer.position();
+        int length = buffer.arrayOffset() + buffer.limit();
+        ByteArrayInputStream stream = new ByteArrayInputStream(bytes, offset,
+                length);
+        int startAvailable = stream.available();
+        try{
+            Unpacker unpacker = msgpack.createUnpacker(stream);
+            Value v = unpacker.readValue();
+            source.skipBytes(startAvailable - stream.available());
+            return v;
+        }catch( EOFException e ){
+            // not enough buffers.
+            // So retry reading
+            source.resetReaderIndex();
+            return null;
+        }
+    }
 }
-
